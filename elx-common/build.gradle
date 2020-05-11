@@ -1,9 +1,6 @@
 dependencies {
     compile project(':elx-api')
-    compile "org.xbib:guice:${project.property('xbib-guice.version')}"
-    // add all dependencies to runtime source set, even that which are excluded by Elasticsearch jar,
-    // for metaprogramming. We are in Groovyland.
-    runtime "com.vividsolutions:jts:${project.property('jts.version')}"
-    runtime "com.github.spullara.mustache.java:compiler:${project.property('mustache.version')}"
-    runtime "net.java.dev.jna:jna:${project.property('jna.version')}"
+    testCompile "org.elasticsearch.plugin:transport-netty4-client:${rootProject.property('elasticsearch.version')}"
+    testCompile "io.netty:netty-codec-http:${project.property('netty.version')}"
+    testCompile "io.netty:netty-transport:${project.property('netty.version')}"
 }
