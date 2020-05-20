@@ -62,7 +62,7 @@ class IndexPruneTest {
             List<Boolean> list = new ArrayList<>();
             for (String index : Arrays.asList("test_prune1", "test_prune2", "test_prune3", "test_prune4")) {
                 IndicesExistsRequest indicesExistsRequest = new IndicesExistsRequest();
-                indicesExistsRequest.indices(index);
+                indicesExistsRequest.indices(new String[] { index });
                 IndicesExistsResponse indicesExistsResponse =
                         client.getClient().execute(IndicesExistsAction.INSTANCE, indicesExistsRequest).actionGet();
                 list.add(indicesExistsResponse.isExists());

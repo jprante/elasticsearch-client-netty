@@ -9,9 +9,9 @@ import org.xbib.elx.api.BulkController;
 import org.xbib.elx.api.BulkListener;
 import org.xbib.elx.api.BulkMetric;
 
-public class DefaultBulkListener implements BulkListener {
+class DefaultBulkListener implements BulkListener {
 
-    private final Logger logger = LogManager.getLogger(DefaultBulkListener.class.getName());
+    private final Logger logger = LogManager.getLogger(BulkListener.class.getName());
 
     private final BulkController bulkController;
 
@@ -19,7 +19,7 @@ public class DefaultBulkListener implements BulkListener {
 
     private final boolean isBulkLoggingEnabled;
 
-    private Throwable lastBulkError;
+    private Throwable lastBulkError = null;
 
     public DefaultBulkListener(BulkController bulkController,
                                BulkMetric bulkMetric,
@@ -31,12 +31,15 @@ public class DefaultBulkListener implements BulkListener {
 
     @Override
     public void beforeBulk(long executionId, BulkRequest request) {
-        long l = bulkMetric.getCurrentIngest().getCount();
-        bulkMetric.getCurrentIngest().inc();
-        int n = request.numberOfActions();
-        bulkMetric.getSubmitted().inc(n);
-        bulkMetric.getCurrentIngestNumDocs().inc(n);
-        bulkMetric.getTotalIngestSizeInBytes().inc(request.estimatedSizeInBytes());
+        long l = 0;
+        if (bulkMetric != null) {
+            l = bulkMetric.getCurrentIngest().getCount();
+            bulkMetric.getCurrentIngest().inc();
+            int n = request.numberOfActions();
+            bulkMetric.getSubmitted().inc(n);
+            bulkMetric.getCurrentIngestNumDocs().inc(n);
+            bulkMetric.getTotalIngestSizeInBytes().inc(request.estimatedSizeInBytes());
+        }
         if (isBulkLoggingEnabled && logger.isDebugEnabled()) {
             logger.debug("before bulk [{}] [actions={}] [bytes={}] [concurrent requests={}]",
                     executionId,
@@ -48,19 +51,26 @@ public class DefaultBulkListener implements BulkListener {
 
     @Override
     public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
-        long l = bulkMetric.getCurrentIngest().getCount();
-        bulkMetric.getCurrentIngest().dec();
-        bulkMetric.getSucceeded().inc(response.getItems().length);
+        long l = 0;
+        if (bulkMetric != null) {
+            l = bulkMetric.getCurrentIngest().getCount();
+            bulkMetric.getCurrentIngest().dec();
+            bulkMetric.getSucceeded().inc(response.getItems().length);
+        }
         int n = 0;
         for (BulkItemResponse itemResponse : response.getItems()) {
-            bulkMetric.getCurrentIngest().dec(itemResponse.getIndex(), itemResponse.getType(), itemResponse.getId());
+            if (bulkMetric != null) {
+                bulkMetric.getCurrentIngest().dec(itemResponse.getIndex(), itemResponse.getType(), itemResponse.getId());
+            }
             if (itemResponse.isFailed()) {
                 n++;
-                bulkMetric.getSucceeded().dec(1);
-                bulkMetric.getFailed().inc(1);
+                if (bulkMetric != null) {
+                    bulkMetric.getSucceeded().dec(1);
+                    bulkMetric.getFailed().inc(1);
+                }
             }
         }
-        if (isBulkLoggingEnabled && logger.isDebugEnabled()) {
+        if (isBulkLoggingEnabled && bulkMetric != null && logger.isDebugEnabled()) {
             logger.debug("after bulk [{}] [succeeded={}] [failed={}] [{}ms] {} concurrent requests",
                     executionId,
                     bulkMetric.getSucceeded().getCount(),
@@ -74,13 +84,17 @@ public class DefaultBulkListener implements BulkListener {
                         executionId, n, response.buildFailureMessage());
             }
         } else {
-            bulkMetric.getCurrentIngestNumDocs().dec(response.getItems().length);
+            if (bulkMetric != null) {
+                bulkMetric.getCurrentIngestNumDocs().dec(response.getItems().length);
+            }
         }
     }
 
     @Override
     public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
-        bulkMetric.getCurrentIngest().dec();
+        if (bulkMetric != null) {
+            bulkMetric.getCurrentIngest().dec();
+        }
         lastBulkError = failure;
         if (logger.isErrorEnabled()) {
             logger.error("after bulk [" + executionId + "] error", failure);

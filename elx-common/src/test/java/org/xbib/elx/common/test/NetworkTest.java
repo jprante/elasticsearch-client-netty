@@ -1,21 +1,23 @@
-package org.xbib.elx.common;
+package org.xbib.elx.common.test;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.Collections;
 import java.util.Enumeration;
 
-public class NetworkTest {
+// walk over all found interfaces (this is slow - multicast/pings are performed)
+@Disabled
+class NetworkTest {
 
     private static final Logger logger = LogManager.getLogger(NetworkTest.class);
 
     @Test
-    public void testNetwork() throws Exception {
-        // walk very slowly over all interfaces
+    void testNetwork() throws Exception {
         Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
         for (NetworkInterface netint : Collections.list(nets)) {
             System.out.println("checking network interface = " + netint.getName());

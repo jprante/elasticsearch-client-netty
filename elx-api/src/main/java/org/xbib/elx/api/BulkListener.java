@@ -3,9 +3,6 @@ package org.xbib.elx.api;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 
-/**
- * A bulk listener for the execution.
- */
 public interface BulkListener {
 
     /**
@@ -39,8 +36,8 @@ public interface BulkListener {
     void afterBulk(long executionId, BulkRequest request, Throwable failure);
 
     /**
-     * Get the last bulk error
-     * @return the lst bulk error
+     * Get the last bulk error.
+     * @return the last bulk error
      */
     Throwable getLastBulkError();
 }

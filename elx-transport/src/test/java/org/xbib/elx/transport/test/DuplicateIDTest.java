@@ -4,7 +4,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.search.SearchAction;
 import org.elasticsearch.action.search.SearchRequest;
-import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.transport.NoNodeAvailableException;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
@@ -24,11 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ExtendWith(TestExtension.class)
 class DuplicateIDTest {
 
-    private static final Logger logger = LogManager.getLogger(DuplicateIDTest.class.getName());
+    private final static Logger logger = LogManager.getLogger(DuplicateIDTest.class.getName());
 
-    private static final Long MAX_ACTIONS_PER_REQUEST = 10L;
+    private final static Long MAX_ACTIONS_PER_REQUEST = 100L;
 
-    private static final Long ACTIONS = 100L;
+    private final static Long ACTIONS = 50L;
 
     private final TestExtension.Helper helper;
 
@@ -41,8 +40,8 @@ class DuplicateIDTest {
         long numactions = ACTIONS;
         final ExtendedTransportClient client = ClientBuilder.builder()
                 .provider(ExtendedTransportClientProvider.class)
-                .put(Parameters.MAX_ACTIONS_PER_REQUEST.name(), MAX_ACTIONS_PER_REQUEST)
                 .put(helper.getTransportSettings())
+                .put(Parameters.MAX_ACTIONS_PER_REQUEST.name(), MAX_ACTIONS_PER_REQUEST)
                 .build();
         try {
             client.newIndex("test_dup");
@@ -53,16 +52,12 @@ class DuplicateIDTest {
             client.flush();
             client.waitForResponses(30L, TimeUnit.SECONDS);
             client.refreshIndex("test_dup");
-            SearchSourceBuilder builder = new SearchSourceBuilder()
-                    .query(QueryBuilders.matchAllQuery())
-                    .size(0)
-                    .trackTotalHits(true);
-            SearchRequest searchRequest = new SearchRequest()
-                    .indices("test_dup")
-                    .source(builder);
-            SearchResponse searchResponse =
-                    helper.client("1").execute(SearchAction.INSTANCE, searchRequest).actionGet();
-            long hits = searchResponse.getHits().getTotalHits().value;
+            SearchSourceBuilder builder = new SearchSourceBuilder();
+            builder.query(QueryBuilders.matchAllQuery());
+            SearchRequest searchRequest = new SearchRequest();
+            searchRequest.indices("test_dup");
+            searchRequest.source(builder);
+            long hits = helper.client("1").execute(SearchAction.INSTANCE, searchRequest).actionGet().getHits().getTotalHits();
             logger.info("hits = {}", hits);
             assertTrue(hits < ACTIONS);
         } catch (NoNodeAvailableException e) {

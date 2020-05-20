@@ -16,12 +16,9 @@ import org.elasticsearch.client.ElasticsearchClient;
 import org.elasticsearch.client.support.AbstractClient;
 import org.elasticsearch.cluster.health.ClusterHealthStatus;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.transport.TransportAddress;
+import org.elasticsearch.common.transport.InetSocketTransportAddress;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.node.Node;
-import org.elasticsearch.node.NodeValidationException;
-import org.elasticsearch.plugins.Plugin;
-import org.elasticsearch.transport.Netty4Plugin;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -36,19 +33,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * Junit 5 extension for testing Elasticsearch.
- * The extension will be instantiated as a singleton.
- * For parallel test method executions, for example in gradle, it requires a helper class
- * to ensure different ES homes/clusters for each run.
- */
 public class TestExtension implements ParameterResolver, BeforeEachCallback, AfterEachCallback {
 
     private static final Logger logger = LogManager.getLogger("test");
@@ -57,7 +46,7 @@ public class TestExtension implements ParameterResolver, BeforeEachCallback, Aft
 
     private static final char[] numbersAndLetters = ("0123456789abcdefghijklmnopqrstuvwxyz").toCharArray();
 
-    private static final String key = "es-instance-";
+    private static final String key = "es-instance";
 
     private static final AtomicInteger count = new AtomicInteger(0);
 
@@ -86,9 +75,15 @@ public class TestExtension implements ParameterResolver, BeforeEachCallback, Aft
         helper.startNode("1");
         NodesInfoRequest nodesInfoRequest = new NodesInfoRequest().transport(true);
         NodesInfoResponse response = helper.client("1"). execute(NodesInfoAction.INSTANCE, nodesInfoRequest).actionGet();
-        TransportAddress address = response.getNodes().get(0).getTransport().getAddress().publishAddress();
-        helper.host = address.address().getHostName();
-        helper.port = address.address().getPort();
+        Object obj = response.iterator().next().getTransport().getAddress()
+                .publishAddress();
+        String host = null;
+        int port = 0;
+        if (obj instanceof InetSocketTransportAddress) {
+            InetSocketTransportAddress address = (InetSocketTransportAddress) obj;
+            host = address.address().getHostName();
+            port = address.address().getPort();
+        }
         try {
             ClusterHealthResponse healthResponse = helper.client("1").execute(ClusterHealthAction.INSTANCE,
                     new ClusterHealthRequest().waitForStatus(ClusterHealthStatus.GREEN)
@@ -104,6 +99,7 @@ public class TestExtension implements ParameterResolver, BeforeEachCallback, Aft
         ClusterStateResponse clusterStateResponse =
                 helper.client("1").execute(ClusterStateAction.INSTANCE, clusterStateRequest).actionGet();
         logger.info("cluster name = {}", clusterStateResponse.getClusterName().value());
+        logger.info("host = {} port = {}", host, port);
     }
 
     @Override
@@ -111,8 +107,8 @@ public class TestExtension implements ParameterResolver, BeforeEachCallback, Aft
         Helper helper = extensionContext.getParent().get().getStore(ns)
                 .getOrComputeIfAbsent(key + count.get(), key -> create(), Helper.class);
         closeNodes(helper);
-        deleteFiles(Paths.get(helper.getHome()));
-        logger.info("data files wiped: " + helper.getHome());
+        deleteFiles(Paths.get(helper.getHome() + "/data"));
+        logger.info("data files wiped");
         Thread.sleep(2000L); // let OS commit changes
     }
 
@@ -132,7 +128,7 @@ public class TestExtension implements ParameterResolver, BeforeEachCallback, Aft
 
     private static void deleteFiles(Path directory) throws IOException {
         if (Files.exists(directory)) {
-            Files.walkFileTree(directory, new SimpleFileVisitor<>() {
+            Files.walkFileTree(directory, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     Files.delete(file);
@@ -150,8 +146,7 @@ public class TestExtension implements ParameterResolver, BeforeEachCallback, Aft
 
     private Helper create() {
         Helper helper = new Helper();
-        String home = System.getProperty("path.home", "build/elxnode/");
-        helper.setHome(home + helper.randomString(8));
+        helper.setHome(System.getProperty("path.home") + "/" + helper.randomString(8));
         helper.setClusterName("test-cluster-" + helper.randomString(8));
         logger.info("cluster: " + helper.getClusterName() + " home: " + helper.getHome());
         return helper;
@@ -162,10 +157,6 @@ public class TestExtension implements ParameterResolver, BeforeEachCallback, Aft
         String home;
 
         String cluster;
-
-        String host;
-
-        int port;
 
         Map<String, Node> nodes = new HashMap<>();
 
@@ -191,12 +182,10 @@ public class TestExtension implements ParameterResolver, BeforeEachCallback, Aft
             return Settings.builder()
                     .put("cluster.name", getClusterName())
                     .put("path.home", getHome())
-                    .put("cluster.initial_master_nodes", "1")
-                    .put("discovery.seed_hosts",  "127.0.0.1:9300")
                     .build();
         }
 
-        void startNode(String id) throws NodeValidationException {
+        void startNode(String id) {
             buildNode(id).start();
         }
 
@@ -218,8 +207,7 @@ public class TestExtension implements ParameterResolver, BeforeEachCallback, Aft
                     .put(getNodeSettings())
                     .put("node.name", id)
                     .build();
-            List<Class<? extends Plugin>> plugins = Collections.singletonList(Netty4Plugin.class);
-            Node node = new MockNode(nodeSettings, plugins);
+            Node node = new MockNode(nodeSettings);
             AbstractClient client = (AbstractClient) node.client();
             nodes.put(id, node);
             clients.put(id, client);

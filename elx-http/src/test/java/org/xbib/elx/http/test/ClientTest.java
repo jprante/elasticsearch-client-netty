@@ -1,244 +1,122 @@
 package org.xbib.elx.http.test;
 
-import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsAction;
-import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsRequest;
-import org.elasticsearch.action.admin.indices.mapping.get.GetMappingsResponse;
-import org.elasticsearch.action.admin.indices.settings.get.GetSettingsAction;
-import org.elasticsearch.action.admin.indices.settings.get.GetSettingsRequest;
-import org.elasticsearch.action.admin.indices.settings.get.GetSettingsResponse;
+import org.elasticsearch.action.admin.indices.refresh.RefreshAction;
+import org.elasticsearch.action.admin.indices.refresh.RefreshRequest;
+import org.elasticsearch.action.get.GetAction;
+import org.elasticsearch.action.get.GetRequest;
+import org.elasticsearch.action.get.GetResponse;
+import org.elasticsearch.action.get.MultiGetAction;
+import org.elasticsearch.action.get.MultiGetRequest;
+import org.elasticsearch.action.get.MultiGetResponse;
+import org.elasticsearch.action.index.IndexAction;
+import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.search.SearchAction;
 import org.elasticsearch.action.search.SearchRequest;
-import org.elasticsearch.action.search.SearchRequestBuilder;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.transport.NoNodeAvailableException;
-import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.unit.TimeValue;
-import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.json.JsonXContent;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.Ignore;
+import org.junit.Test;
 import org.xbib.elx.common.ClientBuilder;
-import org.xbib.elx.common.Parameters;
 import org.xbib.elx.http.ExtendedHttpClient;
 import org.xbib.elx.http.ExtendedHttpClientProvider;
 
-import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+public class ClientTest extends TestBase {
 
-@ExtendWith(TestExtension.class)
-class ClientTest {
+    private static final Logger logger = LogManager.getLogger(ClientTest.class.getName());
 
-    private static final Logger logger = LogManager.getLogger(ClientTest.class.getSimpleName());
-
-    private static final Long ACTIONS = 100L;
-
-    private static final Long MAX_ACTIONS_PER_REQUEST = 10L;
-
-    private final TestExtension.Helper helper;
-
-    ClientTest(TestExtension.Helper helper) {
-        this.helper = helper;
-    }
-
+    @Ignore
     @Test
-    void testSingleDoc() throws Exception {
-        final ExtendedHttpClient client = ClientBuilder.builder()
+    public void testGet() throws Exception {
+        try (ExtendedHttpClient client = ClientBuilder.builder()
                 .provider(ExtendedHttpClientProvider.class)
-                .put(helper.getHttpSettings())
-                .put(Parameters.MAX_ACTIONS_PER_REQUEST.name(), MAX_ACTIONS_PER_REQUEST)
-                .put(Parameters.FLUSH_INTERVAL.name(), TimeValue.timeValueSeconds(30))
-                .build();
-        try {
-            client.newIndex("test");
-            client.index("test", "1", true, "{ \"name\" : \"Hello World\"}"); // single doc ingest
-            client.flush();
-            client.waitForResponses(30L, TimeUnit.SECONDS);
+                .put("url", "http://" + host + ":" + httpPort)
+                .build()) {
+            IndexRequest indexRequest = new IndexRequest();
+            indexRequest.index("test");
+            indexRequest.type("test");
+            indexRequest.id("1");
+            indexRequest.source("test", "Hello Jörg");
+            IndexResponse indexResponse = client("1").execute(IndexAction.INSTANCE, indexRequest).actionGet();
+            client("1").execute(RefreshAction.INSTANCE, new RefreshRequest());
+
+            GetRequest getRequest = new GetRequest();
+            getRequest.index("test");
+            getRequest.type("test");
+            getRequest.id("1");
+
+            GetResponse getResponse = client.execute(GetAction.INSTANCE, getRequest).actionGet();
+
+            assertTrue(getResponse.isExists());
+            assertEquals("{\"test\":\"Hello Jörg\"}", getResponse.getSourceAsString());
+
         } catch (NoNodeAvailableException e) {
             logger.warn("skipping, no node available");
-        } finally {
-            assertEquals(1, client.getBulkController().getBulkMetric().getSucceeded().getCount());
-            if (client.getBulkController().getLastBulkError() != null) {
-                logger.error("error", client.getBulkController().getLastBulkError());
-            }
-            assertNull(client.getBulkController().getLastBulkError());
-            client.close();
+        }
+    }
+
+    @Ignore
+    @Test
+    public void testMultiGet() throws Exception {
+        try (ExtendedHttpClient client = ClientBuilder.builder()
+                .provider(ExtendedHttpClientProvider.class)
+                .put("url", "http://" + host + ":" + httpPort)
+                .build()) {
+            IndexRequest indexRequest = new IndexRequest();
+            indexRequest.index("test");
+            indexRequest.type("test");
+            indexRequest.id("1");
+            indexRequest.source("test", "Hello Jörg");
+            IndexResponse indexResponse = client("1").execute(IndexAction.INSTANCE, indexRequest).actionGet();
+            client("1").execute(RefreshAction.INSTANCE, new RefreshRequest());
+
+            MultiGetRequest multiGetRequest = new MultiGetRequest();
+            multiGetRequest.add("test", "test", "1");
+
+            MultiGetResponse multiGetResponse = client.execute(MultiGetAction.INSTANCE, multiGetRequest).actionGet();
+
+            assertEquals(1, multiGetResponse.getResponses().length);
+            assertEquals("{\"test\":\"Hello Jörg\"}", multiGetResponse.getResponses()[0].getResponse().getSourceAsString());
+
+        } catch (NoNodeAvailableException e) {
+            logger.warn("skipping, no node available");
         }
     }
 
     @Test
-    void testNewIndex() throws Exception {
-        final ExtendedHttpClient client = ClientBuilder.builder()
+    public void testSearchDoc() throws Exception {
+        try (ExtendedHttpClient client = ClientBuilder.builder()
                 .provider(ExtendedHttpClientProvider.class)
-                .put(helper.getHttpSettings())
-                .put(Parameters.FLUSH_INTERVAL.name(), TimeValue.timeValueSeconds(5))
-                .build();
-        client.newIndex("test");
-        client.close();
-    }
+                .put("url", "http://" + host + ":" + httpPort)
+                .build()) {
+            IndexRequest indexRequest = new IndexRequest();
+            indexRequest.index("test");
+            indexRequest.type("test");
+            indexRequest.id("1");
+            indexRequest.source("test", "Hello Jörg");
+            IndexResponse indexResponse = client("1").execute(IndexAction.INSTANCE, indexRequest).actionGet();
+            client("1").execute(RefreshAction.INSTANCE, new RefreshRequest());
 
-    @Test
-    void testNewIndexWithSettings() throws Exception {
-        final ExtendedHttpClient client = ClientBuilder.builder()
-                .provider(ExtendedHttpClientProvider.class)
-                .put(helper.getHttpSettings())
-                .put(Parameters.FLUSH_INTERVAL.name(), TimeValue.timeValueSeconds(5))
-                .build();
-        Settings settings = Settings.builder().put("index.number_of_shards", "1").build();
-        client.newIndex("test", settings);
-        GetSettingsRequest getSettingsRequest = new GetSettingsRequest()
-                .indices("test");
-        GetSettingsResponse getSettingsResponse =
-                client.getClient().execute(GetSettingsAction.INSTANCE, getSettingsRequest).actionGet();
-        logger.log(Level.INFO, "settings=" + getSettingsResponse.getSetting("test", "index.number_of_shards"));
-        assertEquals("1", getSettingsResponse.getSetting("test", "index.number_of_shards"));
-        client.close();
-    }
-
-    @Test
-    void testNewIndexWithSettingsAndMappings() throws Exception {
-        final ExtendedHttpClient client = ClientBuilder.builder()
-                .provider(ExtendedHttpClientProvider.class)
-                .put(helper.getHttpSettings())
-                .put(Parameters.FLUSH_INTERVAL.name(), TimeValue.timeValueSeconds(5))
-                .build();
-        Settings settings = Settings.builder().put("index.number_of_shards", "1").build();
-        XContentBuilder builder = JsonXContent.contentBuilder()
-                .startObject()
-                .field("date_detection", false)
-                .startObject("properties")
-                .startObject("pos")
-                .field("type", "geo_point")
-                .endObject()
-                .endObject()
-                .endObject();
-        client.newIndex("test", settings, builder);
-        GetSettingsRequest getSettingsRequest = new GetSettingsRequest()
-                .indices("test");
-        GetSettingsResponse getSettingsResponse =
-                client.getClient().execute(GetSettingsAction.INSTANCE, getSettingsRequest).actionGet();
-        assertEquals("1", getSettingsResponse.getSetting("test", "index.number_of_shards"));
-        GetMappingsRequest getMappingsRequest = new GetMappingsRequest()
-                .indices("test");
-        GetMappingsResponse getMappingsResponse =
-                client.getClient().execute(GetMappingsAction.INSTANCE, getMappingsRequest).actionGet();
-        assertTrue(getMappingsResponse.getMappings().get("test").containsKey("_doc"));
-        client.close();
-    }
-
-    @Test
-    void testRandomDocs() throws Exception {
-        long numactions = ACTIONS;
-        final ExtendedHttpClient client = ClientBuilder.builder()
-                .provider(ExtendedHttpClientProvider.class)
-                .put(helper.getHttpSettings())
-                .put(Parameters.MAX_ACTIONS_PER_REQUEST.name(), MAX_ACTIONS_PER_REQUEST)
-                .put(Parameters.FLUSH_INTERVAL.name(), TimeValue.timeValueSeconds(60))
-                .build();
-        try {
-            client.newIndex("test");
-            for (int i = 0; i < ACTIONS; i++) {
-                client.index("test", null, false, "{ \"name\" : \"" + helper.randomString(32) + "\"}");
-            }
-            client.flush();
-            client.waitForResponses(30L, TimeUnit.SECONDS);
+            SearchSourceBuilder builder = new SearchSourceBuilder();
+            builder.query(QueryBuilders.matchAllQuery());
+            SearchRequest searchRequest = new SearchRequest();
+            searchRequest.indices("test");
+            searchRequest.types("test");
+            searchRequest.source(builder);
+            SearchResponse searchResponse = client.execute(SearchAction.INSTANCE, searchRequest).actionGet();
+            long hits = searchResponse.getHits().getTotalHits();
+            assertEquals(1, hits);
+            logger.info("hits = {} source = {}", hits, searchResponse.getHits().getHits()[0].getSourceAsString());
+            assertEquals("{\"test\":\"Hello Jörg\"}", searchResponse.getHits().getHits()[0].getSourceAsString());
         } catch (NoNodeAvailableException e) {
             logger.warn("skipping, no node available");
-        } catch (Exception e) {
-            logger.error(e.getMessage(), e);
-        } finally {
-            assertEquals(numactions, client.getBulkController().getBulkMetric().getSucceeded().getCount());
-            if (client.getBulkController().getLastBulkError() != null) {
-                logger.error("error", client.getBulkController().getLastBulkError());
-            }
-            assertNull(client.getBulkController().getLastBulkError());
-            client.refreshIndex("test");
-            SearchRequestBuilder searchRequestBuilder = new SearchRequestBuilder(client.getClient(), SearchAction.INSTANCE)
-                    .setQuery(QueryBuilders.matchAllQuery()).setSize(0);
-            assertEquals(numactions, searchRequestBuilder.execute().actionGet().getHits().getTotalHits().value);
-            client.close();
-        }
-    }
-
-    @Test
-    void testThreadedRandomDocs() throws Exception {
-        int maxthreads = Runtime.getRuntime().availableProcessors();
-        Long maxActionsPerRequest = MAX_ACTIONS_PER_REQUEST;
-        final long actions = ACTIONS;
-        logger.info("maxthreads={} maxactions={} maxloop={}", maxthreads, maxActionsPerRequest, actions);
-        final ExtendedHttpClient client = ClientBuilder.builder()
-                .provider(ExtendedHttpClientProvider.class)
-                .put(helper.getHttpSettings())
-                .put(Parameters.MAX_CONCURRENT_REQUESTS.name(), maxthreads * 2)
-                .put(Parameters.MAX_ACTIONS_PER_REQUEST.name(), maxActionsPerRequest)
-                .put(Parameters.FLUSH_INTERVAL.name(), TimeValue.timeValueSeconds(60))
-                .build();
-        try {
-            Settings settings = Settings.builder()
-                    .put("index.number_of_shards", 1)
-                    .put("index.number_of_replicas", 0)
-                    .build();
-            client.newIndex("test", settings, (String)null)
-                    .startBulk("test", 0, 1000);
-            logger.info("index created");
-            ExecutorService executorService = Executors.newFixedThreadPool(maxthreads);
-            final CountDownLatch latch = new CountDownLatch(maxthreads);
-            for (int i = 0; i < maxthreads; i++) {
-                executorService.execute(() -> {
-                    for (int i1 = 0; i1 < actions; i1++) {
-                        client.index("test", null, false,"{ \"name\" : \"" + helper.randomString(32) + "\"}");
-                    }
-                    latch.countDown();
-                });
-            }
-            logger.info("waiting for latch...");
-            if (latch.await(60L, TimeUnit.SECONDS)) {
-                logger.info("flush...");
-                client.flush();
-                client.waitForResponses(60L, TimeUnit.SECONDS);
-                logger.info("got all responses, executor service shutdown...");
-                executorService.shutdown();
-                executorService.awaitTermination(60L, TimeUnit.SECONDS);
-                logger.info("pool is shut down");
-            } else {
-                logger.warn("latch timeout");
-            }
-            client.stopBulk("test", 30L, TimeUnit.SECONDS);
-            assertEquals(maxthreads * actions, client.getBulkController().getBulkMetric().getSucceeded().getCount());
-        } catch (NoNodeAvailableException e) {
-            logger.warn("skipping, no node available");
-        } catch (Exception e) {
-            logger.error(e.getMessage(), e);
-        } finally {
-            if (client.getBulkController().getLastBulkError() != null) {
-                logger.error("error", client.getBulkController().getLastBulkError());
-            }
-            assertNull(client.getBulkController().getLastBulkError());
-            assertEquals(maxthreads * actions, client.getBulkController().getBulkMetric().getSucceeded().getCount());
-            logger.log(Level.INFO, "refreshing index test");
-            client.refreshIndex("test");
-            SearchSourceBuilder builder = new SearchSourceBuilder()
-                    .query(QueryBuilders.matchAllQuery())
-                    .size(0)
-                    .trackTotalHits(true);
-            SearchRequest searchRequest = new SearchRequest()
-                    .indices("test")
-                    .source(builder);
-            SearchResponse searchResponse = client.getClient().execute(SearchAction.INSTANCE, searchRequest).actionGet();
-            assertEquals(maxthreads * actions, searchResponse.getHits().getTotalHits().value);
-            client.close();
-            client.close();
         }
     }
 }

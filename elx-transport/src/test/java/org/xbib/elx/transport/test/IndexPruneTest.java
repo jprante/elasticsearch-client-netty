@@ -54,16 +54,19 @@ class IndexPruneTest {
             client.shiftIndex("test_prune", "test_prune3", Collections.emptyList());
             client.newIndex("test_prune4", settings);
             client.shiftIndex("test_prune", "test_prune4", Collections.emptyList());
+
             IndexPruneResult indexPruneResult =
                     client.pruneIndex("test_prune", "test_prune4", 2, 2, true);
+
             assertTrue(indexPruneResult.getDeletedIndices().contains("test_prune1"));
             assertTrue(indexPruneResult.getDeletedIndices().contains("test_prune2"));
             assertFalse(indexPruneResult.getDeletedIndices().contains("test_prune3"));
             assertFalse(indexPruneResult.getDeletedIndices().contains("test_prune4"));
+
             List<Boolean> list = new ArrayList<>();
             for (String index : Arrays.asList("test_prune1", "test_prune2", "test_prune3", "test_prune4")) {
                 IndicesExistsRequest indicesExistsRequest = new IndicesExistsRequest();
-                indicesExistsRequest.indices(index);
+                indicesExistsRequest.indices(new String[] { index });
                 IndicesExistsResponse indicesExistsResponse =
                         client.getClient().execute(IndicesExistsAction.INSTANCE, indicesExistsRequest).actionGet();
                 list.add(indicesExistsResponse.isExists());

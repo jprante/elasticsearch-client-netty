@@ -1,9 +1,9 @@
 package org.xbib.elx.http;
 
+import io.netty.handler.codec.http.FullHttpResponse;
 import org.elasticsearch.action.ActionRequest;
 import org.elasticsearch.action.ActionResponse;
-import org.xbib.netty.http.client.api.Transport;
-import org.xbib.netty.http.common.HttpResponse;
+import org.xbib.netty.http.client.transport.Transport;
 
 /**
  * HTTP action context.
@@ -21,7 +21,7 @@ public class HttpActionContext<R extends ActionRequest, T extends ActionResponse
 
     private Transport httpClientTransport;
 
-    private HttpResponse httpResponse;
+    private FullHttpResponse httpResponse;
 
     HttpActionContext(ExtendedHttpClient extendedHttpClient, R request, String url) {
         this.extendedHttpClient = extendedHttpClient;
@@ -49,12 +49,12 @@ public class HttpActionContext<R extends ActionRequest, T extends ActionResponse
         return httpClientTransport;
     }
 
-    public HttpActionContext<R, T> setHttpResponse(HttpResponse httpResponse) {
-        this.httpResponse = httpResponse;
+    public HttpActionContext<R, T> setHttpResponse(FullHttpResponse fullHttpResponse) {
+        this.httpResponse = fullHttpResponse;
         return this;
     }
 
-    public HttpResponse getHttpResponse() {
+    public FullHttpResponse getHttpResponse() {
         return httpResponse;
     }
 }

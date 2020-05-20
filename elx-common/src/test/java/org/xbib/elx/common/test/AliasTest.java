@@ -11,6 +11,7 @@ import org.elasticsearch.action.admin.indices.alias.get.GetAliasesResponse;
 import org.elasticsearch.action.admin.indices.create.CreateIndexAction;
 import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
 import org.elasticsearch.client.ElasticsearchClient;
+import org.elasticsearch.cluster.metadata.AliasAction;
 import org.elasticsearch.common.Strings;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,27 +35,25 @@ class AliasTest {
 
     AliasTest(TestExtension.Helper helper) {
         this.helper = helper;
-     }
+    }
 
     @Test
     void testAlias() {
         ElasticsearchClient client = helper.client("1");
-        CreateIndexRequest indexRequest = new CreateIndexRequest("test");
+        CreateIndexRequest indexRequest = new CreateIndexRequest("test_index");
         client.execute(CreateIndexAction.INSTANCE, indexRequest).actionGet();
-        // put alias
         IndicesAliasesRequest indicesAliasesRequest = new IndicesAliasesRequest();
-        String[] indices = new String[] { "test" };
-        String[] aliases = new String[] { "test_alias" };
+        String[] indices = new String[]{"test_index"};
+        String[] aliases = new String[]{"test_alias"};
         IndicesAliasesRequest.AliasActions aliasAction =
-                new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.ADD)
-                        .indices(indices)
-                        .aliases(aliases);
+                new IndicesAliasesRequest.AliasActions(AliasAction.Type.ADD, indices, aliases);
         indicesAliasesRequest.addAliasAction(aliasAction);
         client.execute(IndicesAliasesAction.INSTANCE, indicesAliasesRequest).actionGet();
         // get alias
         GetAliasesRequest getAliasesRequest = new GetAliasesRequest(Strings.EMPTY_ARRAY);
         long t0 = System.nanoTime();
-        GetAliasesResponse getAliasesResponse = client.execute(GetAliasesAction.INSTANCE, getAliasesRequest).actionGet();
+        GetAliasesResponse getAliasesResponse =
+                client.execute(GetAliasesAction.INSTANCE, getAliasesRequest).actionGet();
         long t1 = (System.nanoTime() - t0) / 1000000;
         logger.info("{} time(ms) = {}", getAliasesResponse.getAliases(), t1);
         assertTrue(t1 >= 0);
@@ -74,15 +73,12 @@ class AliasTest {
         String[] indices = new String[] { "test20160101", "test20160102", "test20160103" };
         String[] aliases = new String[] { alias };
         IndicesAliasesRequest.AliasActions aliasAction =
-                new IndicesAliasesRequest.AliasActions(IndicesAliasesRequest.AliasActions.Type.ADD)
-                .indices(indices)
-                .aliases(aliases);
+                new IndicesAliasesRequest.AliasActions(AliasAction.Type.ADD, indices, aliases);
         indicesAliasesRequest.addAliasAction(aliasAction);
         client.execute(IndicesAliasesAction.INSTANCE, indicesAliasesRequest).actionGet();
         GetAliasesRequest getAliasesRequest = new GetAliasesRequest();
         getAliasesRequest.aliases(alias);
-        GetAliasesResponse getAliasesResponse =
-                client.execute(GetAliasesAction.INSTANCE, getAliasesRequest).actionGet();
+        GetAliasesResponse getAliasesResponse = client.execute(GetAliasesAction.INSTANCE, getAliasesRequest).actionGet();
         Pattern pattern = Pattern.compile("^(.*?)(\\d+)$");
         Set<String> result = new TreeSet<>(Collections.reverseOrder());
         for (ObjectCursor<String> indexName : getAliasesResponse.getAliases().keys()) {
